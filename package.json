@@ -1,0 +1,27 @@
+{
+  "name": "postmanBackup",
+  "version": "1.0.0",
+  "description": "Allows to download all available Postman collections and environments.",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/kytmanov/postmanBackup.git"
+  },
+  "keywords": [
+    "postman",
+    "backup",
+    "api"
+  ],
+  "author": "Alexander Kytmanov",
+  "license": "MIT",
+  "dependencies": {
+    "async": "^2.6.1",
+    "dateformat": "^3.0.3",
+    "fs-extra": "^7.0.1",
+    "log4js": "^3.0.6",
+    "node-rest-client": "^3.1.0"
+  }
+}
