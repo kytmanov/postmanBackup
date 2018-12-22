@@ -2,7 +2,7 @@
 
 Allows to download Postman collections and environments using Postman API.
 
-## Getting Started
+### Getting Started
 
 Create API Key https://docs.api.getpostman.com/#authentication
 Set your API key to config.json
