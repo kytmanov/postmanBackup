@@ -1,6 +1,6 @@
 # Postman Backup Tool
 
-Allows to download Postman collections and environments using Postman API.
+Allows to download Postman all available collections and environments from private and team workspaces using Postman API.
 
 ### Getting Started
 ```
