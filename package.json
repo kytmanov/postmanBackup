@@ -1,7 +1,7 @@
 {
-  "name": "postmanBackup",
+  "name": "postmanbackup",
   "version": "1.0.0",
-  "description": "Allows to download all available Postman collections and environments.",
+  "description": "Allows download all Postman collections and environments from an account, using Postman API",
   "main": "app.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
