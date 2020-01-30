@@ -17,6 +17,7 @@ const PATHCOL = config.path.collections; //Postman collections folder
 const PATHENV = config.path.environments; //Postman environments folder
 const TIMEOUT = config.time_between_requests; //Delay between api requests(Postman limitaion - max 60 requests per minute).
 const USEDATE = config.use_date_subfolder;
+const USEID = config.use_id_subfolder;
 
 const APIURL = config.api_url;
 
@@ -50,8 +51,12 @@ function getData(url, key, callback) {
 }
 
 function saveJson(path, key, filename, json, callback) {
-  let fullpath = path + '/' + key;
+  let fullpath = path;
 
+  if (USEID) {
+    fullpath = fullpath + '/' + key;
+  }
+  
   if (USEDATE) {
     let date = dateformat(new Date(), "mm-dd-yyyy")
     fullpath = fullpath + '/' + date;
