@@ -7,9 +7,9 @@
  - Backup all available environments
  - Use multiple API keys to handle all your Postman accounts
  - Specify folder to save your backups
- - **Works for Free Postman accounts**
+ - **Works with Free Postman accounts**
 
-## Installing
+## Install Postman Backup Tool
 
 To run this app, install it locally using npm:
 
