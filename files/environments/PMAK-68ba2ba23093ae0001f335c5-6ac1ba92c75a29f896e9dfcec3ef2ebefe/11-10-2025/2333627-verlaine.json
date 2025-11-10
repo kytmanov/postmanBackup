@@ -1,0 +1,1 @@
+{"environment":{"id":"a72decfb-1632-490a-a898-532b4322481d","name":"verlaine","owner":"2333627","createdAt":"2024-02-26T01:31:11.000Z","updatedAt":"2024-02-26T01:33:36.000Z","values":[{"key":"base_servlet_url","value":"http://verlaine.more4apps.com:8000/servlets/m4aServlet","enabled":true,"type":"default"}],"uid":"2333627-a72decfb-1632-490a-a898-532b4322481d","isPublic":false}}
