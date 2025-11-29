@@ -1,0 +1,1 @@
+{"environment":{"id":"3cabdddc-7a68-44d1-a53c-d71dfc7dcd36","name":"Mailgun","owner":"2333627","createdAt":"2024-01-23T00:26:39.000Z","updatedAt":"2024-01-23T00:26:56.000Z","values":[{"key":"server","value":"https://api.mailgun.net/v3/mg.more4apps.com","enabled":true,"type":"default"}],"uid":"2333627-3cabdddc-7a68-44d1-a53c-d71dfc7dcd36","isPublic":false}}
