@@ -16,7 +16,7 @@ jobs:
       # Toggle dry-run behavior:
       # "true"  => prune prints what WOULD be deleted; backup is skipped
       # "false" => prune really deletes; backup runs; changes committed/pushed
-      DRY_RUN: "false"
+      DRY_RUN: "true"
       # Retention window (in days). Change this one line to adjust pruning.
       DAYS_TO_KEEP: "90"
 
@@ -120,7 +120,10 @@ jobs:
           if npm ci; then
             echo "npm ci succeeded."
           else
-            echo "npm ci failed (lock mismatch). Falling back to npm install to
+            echo "npm ci failed (lock mismatch). Falling back to npm install to regenerate lockfile."
+            rm -rf node_modules package-lock.json
+            npm install
+          fi
 
       - name: Audit dependencies (non-blocking while migrating)
         if: ${{ env.DRY_RUN == 'false' }}
