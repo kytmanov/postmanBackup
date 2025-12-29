@@ -7,26 +7,22 @@
 const fs = require('fs-extra');
 const path = require('path');
 const axios = require('axios');
-const asyncLib = require('async'); // keep if you want to retain async.each; otherwise native loops
 const dateformat = require('dateformat');
 const log4js = require('log4js');
 
 const logger = log4js.getLogger('debug');
 const config = require('./config.json');
 
-const APIKEYS = config.api_keys;                 // array of Postman API keys
-const PATHCOL = config.path.collections;         // base folder for collections
-const PATHENV = config.path.environments;        // base folder for environments
-const TIMEOUT = config.time_between_requests;    // ms delay between API requests
-const USEDATE = config.use_date_subfolder;       // boolean
-const USEID   = config.use_id_subfolder;         // boolean
-const APIURL  = config.api_url;                  // e.g., "https://api.getpostman.com/"
+const APIKEYS = Array.isArray(config.api_keys) ? config.api_keys : []; // array of Postman API keys
+const PATHCOL = config.path?.collections || 'files/collections';       // base folder for collections
+const PATHENV = config.path?.environments || 'files/environments';     // base folder for environments
+const TIMEOUT = Number(config.time_between_requests ?? 1000);          // ms delay between API requests
+const USEDATE = !!config.use_date_subfolder;                           // boolean
+const USEID   = !!config.use_id_subfolder;                             // boolean
+const APIURL  = String(config.api_url || 'https://api.getpostman.com/').replace(/\/+$/, '/') // ensure trailing slash
 
-log4js.configure(config.debug);
+log4js.configure(config.debug || {});
 
-/**
- * Sleep helper for pacing API calls (respect 60 req/min).
- */
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
@@ -34,10 +30,9 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  */
 function createClient(key) {
   const client = axios.create({
-    baseURL: APIURL.replace(/\/+$/, '/'), // ensure trailing slash
+    baseURL: APIURL,                // e.g., https://api.getpostman.com/
     headers: { 'X-Api-Key': key },
     timeout: 30_000,
-    // If you need proxies or HTTPS agent, add here.
   });
 
   // Optional: basic retry for rate limit / transient errors
@@ -46,7 +41,7 @@ function createClient(key) {
     async (error) => {
       const status = error?.response?.status;
       const url = error?.config?.url;
-      const method = error?.config?.method || 'GET';
+      const method = (error?.config?.method || 'GET').toUpperCase();
 
       // Simple backoff for 429 or 5xx (up to 3 retries)
       const cfg = error.config || {};
@@ -54,16 +49,16 @@ function createClient(key) {
 
       const isRetryable = status === 429 || (status >= 500 && status <= 599);
       if (isRetryable && cfg.__retryCount <= 3) {
-        const backoffMs = Math.min(10_000, 1_000 * cfg.__retryCount); // 1s, 2s, 3s caps at 10s
-        logger.warn(`Retry ${cfg.__retryCount} for ${method.toUpperCase()} ${url} after ${backoffMs}ms (status ${status})`);
+        const backoffMs = Math.min(10_000, 1_000 * cfg.__retryCount); // 1s, 2s, 3s (capped)
+        logger.warn(`Retry ${cfg.__retryCount} for ${method} ${url} after ${backoffMs}ms (status ${status})`);
         await sleep(backoffMs);
-        return client(cfg);
+        return client(cfg); // retry the original request using this client
       }
 
       // Log and rethrow
       const msg = status
-        ? `HTTP ${status} on ${method.toUpperCase()} ${url}`
-        : `Network error on ${method.toUpperCase()} ${url || '(unknown url)'}`;
+        ? `HTTP ${status} on ${method} ${url}`
+        : `Network error on ${method} ${url || '(unknown url)'}`;
       logger.error(msg, error.message);
       throw error;
     }
@@ -91,7 +86,7 @@ function buildTargetDir(basePath, key) {
   }
 
   if (USEDATE) {
-    const dateStr = dateformat(new Date(), 'mm-dd-yyyy'); // keep your MM-DD-YYYY layout
+    const dateStr = dateformat(new Date(), 'mm-dd-yyyy'); // keep MM-DD-YYYY layout
     full = path.join(full, dateStr);
   }
 
@@ -133,13 +128,11 @@ async function processKey(key) {
     const items = Array.isArray(colList?.collections) ? colList.collections : [];
     logger.info(`Key ${key}: ${items.length} collections found.`);
 
-    // sequential with pacing
     for (const el of items) {
       const uid = el.uid;
       const owner = safeFilename(el.owner);
 
-      // delay to respect rate limit
-      await sleep(TIMEOUT);
+      await sleep(TIMEOUT); // respect rate limit
 
       try {
         const colJson = await getJson(client, `collections/${uid}`);
@@ -148,11 +141,11 @@ async function processKey(key) {
         const pathSaved = await saveJson(PATHCOL, key, filename, colJson);
         logger.info(`Collection: ${uid}: ${filename} → ${pathSaved}`);
       } catch (err) {
-        logger.error(`Failed to fetch/save collection ${uid}`, err.message);
+        logger.error(`Failed to fetch/save collection ${uid}: ${err.message}`);
       }
     }
   } catch (err) {
-    logger.error(`Failed to list collections for key ${key}`, err.message);
+    logger.error(`Failed to list collections for key ${key}: ${err.message}`);
   }
 
   // --- Environments ---
@@ -174,27 +167,30 @@ async function processKey(key) {
         const pathSaved = await saveJson(PATHENV, key, filename, envJson);
         logger.info(`Environment: ${uid}: ${filename} → ${pathSaved}`);
       } catch (err) {
-        logger.error(`Failed to fetch/save environment ${uid}`, err.message);
+        logger.error(`Failed to fetch/save environment ${uid}: ${err.message}`);
       }
     }
   } catch (err) {
-    logger.error(`Failed to list environments for key ${key}`, err.message);
+    logger.error(`Failed to list environments for key ${key}: ${err.message}`);
   }
 }
 
 /**
- * Main: iterate all API keys (in parallel or series).
- * We’ll run in series to keep rate-limit math simple per key.
- * If you prefer parallel keys, be mindful of global rate limits.
+ * Main: iterate all API keys in series (simpler rate limits).
  */
 (async () => {
   try {
+    if (APIKEYS.length === 0) {
+      logger.warn('No API keys found in config.api_keys. Nothing to do.');
+      return;
+    }
+
     for (const key of APIKEYS) {
       await processKey(key);
     }
     logger.info('Backup completed.');
   } catch (err) {
-    logger.error('Unexpected error in backup run', err.message);
+    logger.error('Unexpected error in backup run:', err.message);
     process.exit(1);
   }
 })();
