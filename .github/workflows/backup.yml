@@ -20,6 +20,11 @@ jobs:
       # Retention window (in days). Change this one line to adjust pruning.
       DAYS_TO_KEEP: "90"
 
+      # Perf tuning knobs for app.js
+      CONCURRENCY: "8"   # number of concurrent requests
+      STAGGER_MS: "100"  # ms spacing when launching each request
+      RETRY_5XX: "false" # only retry 429 (rate limits)
+
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
