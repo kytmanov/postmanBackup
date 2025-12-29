@@ -12,61 +12,75 @@ permissions:
 jobs:
   backup:
     runs-on: ubuntu-latest
+    env:
+      DRY_RUN: "true"   # flip to "false" after confirming logs
+
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
 
-      - name: LS (before)
-        run: ls -l
+      - name: Inspect repo tree (debug)
+        run: |
+          echo "Working directory: $PWD"
+          echo "Top-level tree:"
+          ls -la
+          echo "files/ subtree:"
+          if [ -d files ]; then find files -maxdepth 2 -type d -print; fi
 
       - name: Prune backups older than 30 days
         run: |
           set -euo pipefail
 
-          COLLECTIONS_DIR="collections/PMAK-68ba2ba23093ae0001f335c5-6ac1ba92c75a29f896e9dfcec3ef2ebefe"
-          ENVIRONMENTS_DIR="environments/PMAK-68ba2ba23093ae0001f335c5-6ac1ba92c75a29f896e9dfcec3ef2ebefe"
-
+          ROOT="files"
           CUTOFF_EPOCH=$(date -u -d "30 days ago" +%s)
           echo "UTC cutoff epoch: $CUTOFF_EPOCH (30 days ago)"
 
-          prune_dir_tree() {
-            local BASE_DIR="$1"
+          prune_base() {
+            local BASE="$1"
 
-            if [ ! -d "$BASE_DIR" ]; then
-              echo "Skip: $BASE_DIR does not exist."
+            if [ ! -d "$BASE" ]; then
+              echo "Skip: $BASE does not exist."
               return
             fi
 
-            echo "Pruning in: $BASE_DIR"
+            echo "Scanning base: $BASE"
 
-            find "$BASE_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | while read -r dname; do
-              if [[ "$dname" =~ ^([0-9]{2})-([0-9]{2})-([0-9]{4})$ ]]; then
-                mm="${BASH_REMATCH[1]}"
-                dd="${BASH_REMATCH[2]}"
-                yyyy="${BASH_REMATCH[3]}"
+            find "$BASE" -mindepth 1 -maxdepth 1 -type d -print | while read -r WORKSPACE_DIR; do
+              echo "Workspace: $WORKSPACE_DIR"
 
-                dir_epoch=$(date -u -d "${mm}-${dd}-${yyyy}" +%s 2>/dev/null || echo "invalid")
-                if [[ "$dir_epoch" == "invalid" ]]; then
-                  echo "WARN: Could not parse date for directory '$dname' — skipping."
-                  continue
-                fi
+              find "$WORKSPACE_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | while read -r dname; do
+                if [[ "$dname" =~ ^([0-9]{2})-([0-9]{2})-([0-9]{4})$ ]]; then
+                  mm="${BASH_REMATCH[1]}"
+                  dd="${BASH_REMATCH[2]}"
+                  yyyy="${BASH_REMATCH[3]}"
 
-                if (( dir_epoch < CUTOFF_EPOCH )); then
-                  echo "Deleting: $BASE_DIR/$dname (epoch: $dir_epoch)"
-                  echo "[DRY RUN] Would delete: $BASE_DIR/$dname"
+                  dir_epoch=$(date -u -d "${mm}-${dd}-${yyyy}" +%s 2>/dev/null || echo "invalid")
+                  if [[ "$dir_epoch" == "invalid" ]]; then
+                    echo "WARN: Could not parse date for '$dname' — skipping."
+                    continue
+                  fi
+
+                  if (( dir_epoch < CUTOFF_EPOCH )); then
+                    if [[ "${DRY_RUN}" == "true" ]]; then
+                      echo "[DRY RUN] Would delete: $WORKSPACE_DIR/$dname (epoch: $dir_epoch)"
+                    else
+                      echo "Deleting: $WORKSPACE_DIR/$dname (epoch: $dir_epoch)"
+                      rm -rf "$WORKSPACE_DIR/$dname"
+                    fi
+                  else
+                    echo "Keeping:  $WORKSPACE_DIR/$dname (epoch: $dir_epoch)"
+                  fi
                 else
-                  echo "Keeping:  $BASE_DIR/$dname (epoch: $dir_epoch)"
+                  echo "Skip (not MM-DD-YYYY): $dname"
                 fi
-              else
-                echo "Skip (not MM-DD-YYYY): $dname"
-              fi
-            done
+              done
 
-            find "$BASE_DIR" -type d -empty -print -delete || true
+              find "$WORKSPACE_DIR" -type d -empty -print -delete || true
+            done
           }
 
-          prune_dir_tree "$COLLECTIONS_DIR"
-          prune_dir_tree "$ENVIRONMENTS_DIR"
+          prune_base "$ROOT/collections"
+          prune_base "$ROOT/environments"
 
       - name: Set up Node.js
         uses: actions/setup-node@v3
@@ -81,9 +95,6 @@ jobs:
           POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
           POSTMAN_WORKSPACE_ID: ${{ secrets.POSTMAN_WORKSPACE_ID }}
         run: node app.js
-
-      - name: LS (after)
-        run: ls -l
 
       - name: Commit and push changes
         env:
