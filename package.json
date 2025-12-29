@@ -1,3 +1,4 @@
+
 {
   "name": "postmanbackup",
   "version": "1.0.0",
@@ -10,18 +11,20 @@
     "type": "git",
     "url": "git://github.com/kytmanov/postmanBackup.git"
   },
-  "keywords": [
-    "postman",
-    "backup",
-    "api"
-  ],
+  "keywords": ["postman", "backup", "api"],
   "author": "Alexander Kytmanov",
   "license": "MIT",
   "dependencies": {
-    "async": "^2.6.1",
-    "dateformat": "^3.0.3",
-    "fs-extra": "^7.0.1",
-    "log4js": "^3.0.6",
-    "node-rest-client": "^3.1.0"
+    "axios": "^1.7.9",
+    "dateformat": "^4.6.3",
+    "fs-extra": "^11.2.0",
+    "log4js": "^6.9.1"
+  },
+  "overrides": {
+    "debug": "4.3.4",
+    "mkdirp": "1.0.4",
+    "streamroller": "3.1.5",
+    "date-format": "4.0.13",
+    "flatted": "3.3.1"
   }
 }
