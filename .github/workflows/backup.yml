@@ -112,9 +112,15 @@ jobs:
           node-version: '18'
           cache: 'npm'
 
-      - name: Install dependencies
+      - name: Install dependencies (prefer ci, fallback to install)
         if: ${{ env.DRY_RUN == 'false' }}
-        run: npm ci
+        shell: bash
+        run: |
+          set -euo pipefail
+          if npm ci; then
+            echo "npm ci succeeded."
+          else
+            echo "npm ci failed (lock mismatch). Falling back to npm install to
 
       - name: Audit dependencies (non-blocking while migrating)
         if: ${{ env.DRY_RUN == 'false' }}
