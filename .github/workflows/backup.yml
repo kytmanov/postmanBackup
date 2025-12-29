@@ -1,13 +1,14 @@
+
 name: Daily Postman Backup
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # Runs daily at midnight UTC???
+    - cron: '0 0 * * *'  # Runs daily at midnight UTC
   workflow_dispatch:
 
 permissions:
   contents: write
-  
+
 jobs:
   backup:
     runs-on: ubuntu-latest
@@ -15,8 +16,57 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v3
 
-      - name: LS
+      - name: LS (before)
         run: ls -l
+
+      - name: Prune backups older than 30 days
+        run: |
+          set -euo pipefail
+
+          COLLECTIONS_DIR="collections/PMAK-68ba2ba23093ae0001f335c5-6ac1ba92c75a29f896e9dfcec3ef2ebefe"
+          ENVIRONMENTS_DIR="environments/PMAK-68ba2ba23093ae0001f335c5-6ac1ba92c75a29f896e9dfcec3ef2ebefe"
+
+          CUTOFF_EPOCH=$(date -u -d "30 days ago" +%s)
+          echo "UTC cutoff epoch: $CUTOFF_EPOCH (30 days ago)"
+
+          prune_dir_tree() {
+            local BASE_DIR="$1"
+
+            if [ ! -d "$BASE_DIR" ]; then
+              echo "Skip: $BASE_DIR does not exist."
+              return
+            fi
+
+            echo "Pruning in: $BASE_DIR"
+
+            find "$BASE_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | while read -r dname; do
+              if [[ "$dname" =~ ^([0-9]{2})-([0-9]{2})-([0-9]{4})$ ]]; then
+                mm="${BASH_REMATCH[1]}"
+                dd="${BASH_REMATCH[2]}"
+                yyyy="${BASH_REMATCH[3]}"
+
+                dir_epoch=$(date -u -d "${mm}-${dd}-${yyyy}" +%s 2>/dev/null || echo "invalid")
+                if [[ "$dir_epoch" == "invalid" ]]; then
+                  echo "WARN: Could not parse date for directory '$dname' — skipping."
+                  continue
+                fi
+
+                if (( dir_epoch < CUTOFF_EPOCH )); then
+                  echo "Deleting: $BASE_DIR/$dname (epoch: $dir_epoch)"
+                  echo "[DRY RUN] Would delete: $BASE_DIR/$dname"
+                else
+                  echo "Keeping:  $BASE_DIR/$dname (epoch: $dir_epoch)"
+                fi
+              else
+                echo "Skip (not MM-DD-YYYY): $dname"
+              fi
+            done
+
+            find "$BASE_DIR" -type d -empty -print -delete || true
+          }
+
+          prune_dir_tree "$COLLECTIONS_DIR"
+          prune_dir_tree "$ENVIRONMENTS_DIR"
 
       - name: Set up Node.js
         uses: actions/setup-node@v3
@@ -32,16 +82,17 @@ jobs:
           POSTMAN_WORKSPACE_ID: ${{ secrets.POSTMAN_WORKSPACE_ID }}
         run: node app.js
 
-      - name: LS
+      - name: LS (after)
         run: ls -l
 
       - name: Commit and push changes
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
+          set -euo pipefail
           git config --global user.name 'github-actions'
           git config --global user.email 'github-actions@github.com'
-          git add .
-          git commit -m "Daily backup $(date)" || echo "No changes to commit"
+          git add -A
+          git commit -m "Daily backup $(date -u +'%Y-%m-%d %H:%M:%S UTC')" || echo "No changes to commit"
           git remote set-url origin https://x-access-token:${GH_PAT}@github.com/${{ github.repository }}.git
           git push origin HEAD:master
