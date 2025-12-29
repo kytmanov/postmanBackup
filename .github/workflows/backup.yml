@@ -16,7 +16,7 @@ jobs:
       # Toggle dry-run behavior:
       # "true"  => prune prints what WOULD be deleted; backup is skipped
       # "false" => prune really deletes; backup runs; changes committed/pushed
-      DRY_RUN: "true"
+      DRY_RUN: "false"
       # Retention window (in days). Change this one line to adjust pruning.
       DAYS_TO_KEEP: "90"
 
