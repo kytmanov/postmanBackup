@@ -152,4 +152,4 @@ jobs:
           git add -A
           git commit -m "Daily backup (retention=${DAYS_TO_KEEP}d) $(date -u +'%Y-%m-%d %H:%M:%S UTC')" || echo "No changes to commit"
           git remote set-url origin https://x-access-token:${GH_PAT}@github.com/${{ github.repository }}.git
-          git push origin HEAD:master
+          git push origin HEAD:${{ github.ref_name }}
