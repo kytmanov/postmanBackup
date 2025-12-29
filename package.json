@@ -18,7 +18,8 @@
     "axios": "^1.7.9",
     "dateformat": "^4.6.3",
     "fs-extra": "^11.2.0",
-    "log4js": "^6.9.1"
+    "log4js": "^6.9.1",
+    "async": "^3.2.5"
   },
   "overrides": {
     "debug": "4.3.4",
