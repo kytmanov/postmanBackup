@@ -110,10 +110,15 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: '18'
+          cache: 'npm'
 
       - name: Install dependencies
         if: ${{ env.DRY_RUN == 'false' }}
-        run: npm install
+        run: npm ci
+
+      - name: Audit dependencies (non-blocking while migrating)
+        if: ${{ env.DRY_RUN == 'false' }}
+        run: npm audit || true
 
       - name: Run backup
         if: ${{ env.DRY_RUN == 'false' }}
