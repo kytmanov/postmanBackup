@@ -1,118 +1,200 @@
+
 /**
  * Author: Alexander Kytmanov
+ * Modernized by Allan + Copilot (axios & async/await)
  */
 
-const Client = require('node-rest-client').Client;
 const fs = require('fs-extra');
-const async = require('async');
+const path = require('path');
+const axios = require('axios');
+const asyncLib = require('async'); // keep if you want to retain async.each; otherwise native loops
 const dateformat = require('dateformat');
 const log4js = require('log4js');
 
 const logger = log4js.getLogger('debug');
-
 const config = require('./config.json');
 
-const APIKEYS = config.api_keys; //Postman API key. (Allows multiple keys)
-const PATHCOL = config.path.collections; //Postman collections folder
-const PATHENV = config.path.environments; //Postman environments folder
-const TIMEOUT = config.time_between_requests; //Delay between api requests(Postman limitaion - max 60 requests per minute).
-const USEDATE = config.use_date_subfolder;
-const USEID = config.use_id_subfolder;
-
-const APIURL = config.api_url;
+const APIKEYS = config.api_keys;                 // array of Postman API keys
+const PATHCOL = config.path.collections;         // base folder for collections
+const PATHENV = config.path.environments;        // base folder for environments
+const TIMEOUT = config.time_between_requests;    // ms delay between API requests
+const USEDATE = config.use_date_subfolder;       // boolean
+const USEID   = config.use_id_subfolder;         // boolean
+const APIURL  = config.api_url;                  // e.g., "https://api.getpostman.com/"
 
 log4js.configure(config.debug);
 
+/**
+ * Sleep helper for pacing API calls (respect 60 req/min).
+ */
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function getData(url, key, callback) {
-  let client = new Client();
-  var args = {
-    headers: {
-      "X-Api-Key": key
-    }
-  };
-  client.get(url, args, function(data, response) {
-    if (response.statusCode !== 200) {
-      logger.error(`${key} - ${response.statusCode} - ${response.statusMessage} - ${url}`)
-    } else {
-      if (callback) {
-        callback(data, response)
+/**
+ * Create an axios client for a given API key.
+ */
+function createClient(key) {
+  const client = axios.create({
+    baseURL: APIURL.replace(/\/+$/, '/'), // ensure trailing slash
+    headers: { 'X-Api-Key': key },
+    timeout: 30_000,
+    // If you need proxies or HTTPS agent, add here.
+  });
+
+  // Optional: basic retry for rate limit / transient errors
+  client.interceptors.response.use(
+    (resp) => resp,
+    async (error) => {
+      const status = error?.response?.status;
+      const url = error?.config?.url;
+      const method = error?.config?.method || 'GET';
+
+      // Simple backoff for 429 or 5xx (up to 3 retries)
+      const cfg = error.config || {};
+      cfg.__retryCount = (cfg.__retryCount || 0) + 1;
+
+      const isRetryable = status === 429 || (status >= 500 && status <= 599);
+      if (isRetryable && cfg.__retryCount <= 3) {
+        const backoffMs = Math.min(10_000, 1_000 * cfg.__retryCount); // 1s, 2s, 3s caps at 10s
+        logger.warn(`Retry ${cfg.__retryCount} for ${method.toUpperCase()} ${url} after ${backoffMs}ms (status ${status})`);
+        await sleep(backoffMs);
+        return client(cfg);
       }
+
+      // Log and rethrow
+      const msg = status
+        ? `HTTP ${status} on ${method.toUpperCase()} ${url}`
+        : `Network error on ${method.toUpperCase()} ${url || '(unknown url)'}`;
+      logger.error(msg, error.message);
+      throw error;
     }
-  }).on('error', function(err) {
-    logger.error('Request', err.request.options);
-  });
+  );
 
-  // handling client error events
-  client.on('error', function(err) {
-    logger.error('Client', err);
-  });
-
+  return client;
 }
 
-function saveJson(path, key, filename, json, callback) {
-  let fullpath = path;
+/**
+ * GET helper (returns JSON body or throws on error).
+ */
+async function getJson(client, endpoint) {
+  const { data } = await client.get(endpoint);
+  return data;
+}
+
+/**
+ * Build destination directory path, respecting USEID/USEDATE.
+ */
+function buildTargetDir(basePath, key) {
+  let full = basePath;
 
   if (USEID) {
-    fullpath = fullpath + '/' + key;
+    full = path.join(full, key);
   }
-  
+
   if (USEDATE) {
-    let date = dateformat(new Date(), "mm-dd-yyyy")
-    fullpath = fullpath + '/' + date;
+    const dateStr = dateformat(new Date(), 'mm-dd-yyyy'); // keep your MM-DD-YYYY layout
+    full = path.join(full, dateStr);
   }
 
-  fs.ensureDirSync(fullpath)
-
-  let str = JSON.stringify(json);
-  fs.writeFile(fullpath + '/' + filename, str, 'utf8', callback);
+  return full;
 }
 
+/**
+ * Sanitize filenames: remove path separators and trim.
+ */
+function safeFilename(name) {
+  return (name || '')
+    .toString()
+    .replace(/[\/\\:"*?<>|]+/g, '-')    // replace illegal chars with dash
+    .replace(/\s+/g, ' ')               // collapse whitespace
+    .trim();
+}
 
-async.each(APIKEYS, function getAllUids(key) {
-  let colUrl = APIURL + 'collections/'
-  getData(colUrl, key, (collIdsJson) => {
+/**
+ * Save JSON object to disk.
+ */
+async function saveJson(basePath, key, filename, json) {
+  const fullDir = buildTargetDir(basePath, key);
+  await fs.ensureDir(fullDir);
+  const filePath = path.join(fullDir, filename);
+  const content = JSON.stringify(json);
+  await fs.writeFile(filePath, content, 'utf8');
+  return filePath;
+}
 
-    async.eachSeries(collIdsJson.collections, function getCollection(el, callback) {
-      let urlC = colUrl + el.uid;
-      let owner = el.owner;
+/**
+ * Process a single API key: fetch collections and environments and save them.
+ */
+async function processKey(key) {
+  const client = createClient(key);
 
-      setTimeout(() => {
-        getData(urlC, key, (colJson) => {
-          let name = colJson.collection.info.name;
-          let filename = owner + '-' + name + ".json";
+  // --- Collections ---
+  try {
+    const colList = await getJson(client, 'collections/');
+    const items = Array.isArray(colList?.collections) ? colList.collections : [];
+    logger.info(`Key ${key}: ${items.length} collections found.`);
 
-          saveJson(PATHCOL, key, filename, colJson, () => {
-            logger.info(`Collection: ${el.uid}: ${filename} - done`);
-          })
-        })
-        callback();
-      }, TIMEOUT);
+    // sequential with pacing
+    for (const el of items) {
+      const uid = el.uid;
+      const owner = safeFilename(el.owner);
 
-    })
+      // delay to respect rate limit
+      await sleep(TIMEOUT);
 
-  })
+      try {
+        const colJson = await getJson(client, `collections/${uid}`);
+        const name = safeFilename(colJson?.collection?.info?.name || `collection-${uid}`);
+        const filename = `${owner}-${name}.json`;
+        const pathSaved = await saveJson(PATHCOL, key, filename, colJson);
+        logger.info(`Collection: ${uid}: ${filename} → ${pathSaved}`);
+      } catch (err) {
+        logger.error(`Failed to fetch/save collection ${uid}`, err.message);
+      }
+    }
+  } catch (err) {
+    logger.error(`Failed to list collections for key ${key}`, err.message);
+  }
 
-  let envUrl = APIURL + 'environments/'
-  getData(envUrl, key, (envIdsJson) => {
+  // --- Environments ---
+  try {
+    const envList = await getJson(client, 'environments/');
+    const envs = Array.isArray(envList?.environments) ? envList.environments : [];
+    logger.info(`Key ${key}: ${envs.length} environments found.`);
 
-    async.eachSeries(envIdsJson.environments, function getEnviroments(el, callback) {
-      let urlE = envUrl + el.uid;
-      let owner = el.owner;
+    for (const el of envs) {
+      const uid = el.uid;
+      const owner = safeFilename(el.owner);
 
-      setTimeout(() => {
-        getData(urlE, key, (envJson) => {
-          let name = envJson.environment.name;
-          let filename = owner + '-' + name + ".json";
+      await sleep(TIMEOUT);
 
-          saveJson(PATHENV, key, filename, envJson, () => {
-            logger.info(`Enviroment: ${el.uid}: ${filename} - done`);
-          })
-        })
-        callback();
-      }, TIMEOUT);
+      try {
+        const envJson = await getJson(client, `environments/${uid}`);
+        const name = safeFilename(envJson?.environment?.name || `environment-${uid}`);
+        const filename = `${owner}-${name}.json`;
+        const pathSaved = await saveJson(PATHENV, key, filename, envJson);
+        logger.info(`Environment: ${uid}: ${filename} → ${pathSaved}`);
+      } catch (err) {
+        logger.error(`Failed to fetch/save environment ${uid}`, err.message);
+      }
+    }
+  } catch (err) {
+    logger.error(`Failed to list environments for key ${key}`, err.message);
+  }
+}
 
-    })
-
-  })
-})
+/**
+ * Main: iterate all API keys (in parallel or series).
+ * We’ll run in series to keep rate-limit math simple per key.
+ * If you prefer parallel keys, be mindful of global rate limits.
+ */
+(async () => {
+  try {
+    for (const key of APIKEYS) {
+      await processKey(key);
+    }
+    logger.info('Backup completed.');
+  } catch (err) {
+    logger.error('Unexpected error in backup run', err.message);
+    process.exit(1);
+  }
+})();
