@@ -1,26 +1,11 @@
 {
   "api_url": "https://api.getpostman.com/",
-  "api_keys": ["POSTMAN API KEY"],
+  "api_keys": ["YOUR_POSTMAN_API_KEY"],
   "path": {
     "collections": "files/collections",
     "environments": "files/environments"
   },
-  "time_between_requests": 3000,
+  "time_between_requests": 1500,
   "use_date_subfolder": true,
-  "use_id_subfolder": true,
-  "debug": {
-      "appenders": {
-          "debug": {
-              "type": "file",
-              "filename": "debug.log"
-          }
-      },
-      "categories": {
-          "default": {
-              "appenders": ["debug"],
-              "level": "info"
-          }
-      }
-  }
-
+  "use_id_subfolder": true
 }

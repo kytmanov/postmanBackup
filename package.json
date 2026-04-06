@@ -1,10 +1,11 @@
 {
   "name": "postmanbackup",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Allows download all Postman collections and environments from an account, using Postman API",
   "main": "app.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test test/smoke.test.js",
+    "start": "node app.js"
   },
   "repository": {
     "type": "git",
@@ -17,11 +18,10 @@
   ],
   "author": "Alexander Kytmanov",
   "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "dependencies": {
-    "async": "^2.6.1",
-    "dateformat": "^3.0.3",
-    "fs-extra": "^7.0.1",
-    "log4js": "^3.0.6",
-    "node-rest-client": "^3.1.0"
+    "fs-extra": "^11.2.0"
   }
 }
