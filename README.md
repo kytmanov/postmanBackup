@@ -24,6 +24,7 @@ Supports multiple API keys, date-based folder organization, and works with free 
 git clone https://github.com/kytmanov/postmanBackup.git
 cd postmanBackup
 npm install
+cp config.example.json config.json
 ```
 
 ## Configuration
